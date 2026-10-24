@@ -21,5 +21,12 @@ dist-ssr
 *.sln
 *.sw?
 .env
+
+# Dependencias y compilacion
+node_modules/
+dist/
+
+# Variables de entorno
+.env
 .env.*
 !.env.example

@@ -3,29 +3,19 @@ import {
   ArrowRight,
   ChevronDown,
   Heart,
+  LogOut,
   Minus,
   Plus,
   Search,
   ShoppingBag,
   Sparkles,
+  UserRound,
   X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-
-type Audience = 'Todos' | 'Mujer' | 'Hombre' | 'Niños';
-
-type Product = {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  image_url: string;
-  category: string;
-  audience: Exclude<Audience, 'Todos'>;
-  featured: boolean;
-};
-
-type CartItem = Product & { quantity: number };
+import type { Audience, CartItem, Product, SessionUser } from '@/types';
+import AuthModal from '@/components/AuthModal';
+import CheckoutModal from '@/components/CheckoutModal';
 
 const categories = [
   { label: 'Sudaderas', icon: '01' },
@@ -54,6 +44,10 @@ function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   useEffect(() => {
     async function loadProducts() {
@@ -67,6 +61,26 @@ function App() {
     }
 
     void loadProducts();
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) {
+        setUser({ id: data.session.user.id, email: data.session.user.email ?? '' });
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      (async () => {
+        if (session?.user) {
+          setUser({ id: session.user.id, email: session.user.email ?? '' });
+        } else {
+          setUser(null);
+        }
+      })();
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   const filteredProducts = useMemo(() => {
@@ -79,7 +93,6 @@ function App() {
     });
   }, [audience, category, products, search]);
 
-  const featuredProducts = products.filter((product) => product.featured).slice(0, 4);
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
   const cartTotal = cart.reduce((total, item) => total + item.price * item.quantity, 0);
 
@@ -105,6 +118,23 @@ function App() {
     setAudience(nextAudience);
     setCategory('Todas');
     document.getElementById('catalogo')?.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    setCart([]);
+    setIsCartOpen(false);
+  }
+
+  function openCheckout() {
+    if (!user) {
+      setIsCartOpen(false);
+      setAuthMode('login');
+      setAuthOpen(true);
+      return;
+    }
+    setIsCartOpen(false);
+    setCheckoutOpen(true);
   }
 
   return (
@@ -133,6 +163,22 @@ function App() {
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar" className="w-20 bg-transparent text-xs outline-none placeholder:text-[#9b9c95]" />
             </label>
             <button aria-label="Favoritos" className="rounded-full p-2.5 transition-colors hover:bg-white"><Heart size={19} strokeWidth={1.7} /></button>
+
+            {user ? (
+              <div className="flex items-center gap-1.5">
+                <span className="hidden max-w-[140px] truncate text-xs font-medium text-[#3d443f] sm:block">{user.email}</span>
+                <button aria-label="Cerrar sesión" onClick={handleSignOut} className="rounded-full p-2.5 transition-colors hover:bg-white"><LogOut size={18} strokeWidth={1.7} /></button>
+              </div>
+            ) : (
+              <button
+                onClick={() => { setAuthMode('login'); setAuthOpen(true); }}
+                className="flex items-center gap-1.5 rounded-full p-2.5 text-xs font-medium transition-colors hover:bg-white"
+                aria-label="Iniciar sesión"
+              >
+                <UserRound size={18} strokeWidth={1.7} />
+              </button>
+            )}
+
             <button aria-label="Abrir carrito" onClick={() => setIsCartOpen(true)} className="relative rounded-full p-2.5 transition-colors hover:bg-white"><ShoppingBag size={19} strokeWidth={1.7} />{cartCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#b65c3e] px-1 text-[9px] font-bold text-white">{cartCount}</span>}</button>
           </div>
         </div>
@@ -181,7 +227,83 @@ function App() {
         <section className="bg-[#18211f] px-5 py-16 text-[#f7f5f1] lg:px-10"><div className="mx-auto flex max-w-[1380px] flex-col justify-between gap-8 sm:flex-row sm:items-end"><div><p className="mb-4 text-[10px] font-semibold uppercase tracking-[0.28em] text-[#9dac9a]">La filosofía NUEVA</p><p className="max-w-xl font-serif text-4xl leading-[1.05] tracking-[-0.06em] sm:text-5xl">Menos ruido.<br /><em className="font-normal text-[#c4d0c0]">Más tú.</em></p></div><p className="max-w-xs text-sm leading-7 text-[#b5beb2]">Descubre piezas que combinan con tu ritmo, tu espacio y la forma en que quieres sentirte hoy.</p></div></section>
       </main>
 
-      {isCartOpen && <div className="fixed inset-0 z-50 bg-[#18211f]/40" onClick={() => setIsCartOpen(false)}><aside onClick={(event) => event.stopPropagation()} className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-[#f7f5f1] p-6 shadow-2xl sm:p-8"><div className="flex items-center justify-between border-b border-[#d9d6ce] pb-5"><div><p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-[#858980]">Tu selección</p><h2 className="font-serif text-3xl tracking-[-0.05em]">Carrito</h2></div><button aria-label="Cerrar carrito" onClick={() => setIsCartOpen(false)} className="rounded-full p-2 hover:bg-white"><X size={20} /></button></div><div className="flex-1 overflow-y-auto py-5">{cart.length === 0 ? <div className="flex h-full flex-col items-center justify-center text-center"><ShoppingBag size={34} strokeWidth={1.2} className="mb-4 text-[#858980]" /><p className="font-serif text-2xl">Tu carrito está vacío</p><p className="mt-2 text-sm text-[#858980]">Agrega piezas que te hagan sentir bien.</p></div> : <div className="space-y-5">{cart.map((item) => <div key={item.id} className="flex gap-4"><img src={item.image_url} alt={item.name} className="h-24 w-20 object-cover" /><div className="flex flex-1 flex-col justify-between"><div className="flex justify-between gap-3"><div><p className="text-sm font-semibold">{item.name}</p><p className="mt-1 text-xs text-[#858980]">{formatPrice(item.price)}</p></div><button onClick={() => setCart((current) => current.filter((cartItem) => cartItem.id !== item.id))} className="text-[#858980] hover:text-[#18211f]"><X size={15} /></button></div><div className="flex items-center gap-3 text-xs"><button onClick={() => changeQuantity(item.id, -1)} className="rounded-full border border-[#d3d0c8] p-1"><Minus size={13} /></button><span>{item.quantity}</span><button onClick={() => changeQuantity(item.id, 1)} className="rounded-full border border-[#d3d0c8] p-1"><Plus size={13} /></button></div></div></div>)}</div>}</div>{cart.length > 0 && <div className="border-t border-[#d9d6ce] pt-5"><div className="mb-4 flex justify-between text-sm"><span>Total</span><strong>{formatPrice(cartTotal)}</strong></div><button className="flex w-full items-center justify-center gap-3 bg-[#18211f] py-4 text-sm font-semibold text-white transition-colors hover:bg-[#b65c3e]">Continuar con la compra <ArrowRight size={17} /></button><p className="mt-3 text-center text-[10px] uppercase tracking-[0.14em] text-[#858980]">Impuestos y envío calculados al finalizar</p></div>}</aside></div>}
+      {/* Cart drawer */}
+      {isCartOpen && (
+        <div className="fixed inset-0 z-50 bg-[#18211f]/40" onClick={() => setIsCartOpen(false)}>
+          <aside onClick={(event) => event.stopPropagation()} className="absolute right-0 top-0 flex h-full w-full max-w-md flex-col bg-[#f7f5f1] p-6 shadow-2xl sm:p-8">
+            <div className="flex items-center justify-between border-b border-[#d9d6ce] pb-5">
+              <div>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-[#858980]">Tu selección</p>
+                <h2 className="font-serif text-3xl tracking-[-0.05em]">Carrito</h2>
+              </div>
+              <button aria-label="Cerrar carrito" onClick={() => setIsCartOpen(false)} className="rounded-full p-2 hover:bg-white"><X size={20} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto py-5">
+              {cart.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center text-center">
+                  <ShoppingBag size={34} strokeWidth={1.2} className="mb-4 text-[#858980]" />
+                  <p className="font-serif text-2xl">Tu carrito está vacío</p>
+                  <p className="mt-2 text-sm text-[#858980]">Agrega piezas que te hagan sentir bien.</p>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {cart.map((item) => (
+                    <div key={item.id} className="flex gap-4">
+                      <img src={item.image_url} alt={item.name} className="h-24 w-20 object-cover" />
+                      <div className="flex flex-1 flex-col justify-between">
+                        <div className="flex justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold">{item.name}</p>
+                            <p className="mt-1 text-xs text-[#858980]">{formatPrice(item.price)}</p>
+                          </div>
+                          <button onClick={() => setCart((current) => current.filter((cartItem) => cartItem.id !== item.id))} className="text-[#858980] hover:text-[#18211f]"><X size={15} /></button>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs">
+                          <button onClick={() => changeQuantity(item.id, -1)} className="rounded-full border border-[#d3d0c8] p-1"><Minus size={13} /></button>
+                          <span>{item.quantity}</span>
+                          <button onClick={() => changeQuantity(item.id, 1)} className="rounded-full border border-[#d3d0c8] p-1"><Plus size={13} /></button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {cart.length > 0 && (
+              <div className="border-t border-[#d9d6ce] pt-5">
+                <div className="mb-4 flex justify-between text-sm">
+                  <span>Total</span>
+                  <strong>{formatPrice(cartTotal)}</strong>
+                </div>
+                <button onClick={openCheckout} className="flex w-full items-center justify-center gap-3 bg-[#18211f] py-4 text-sm font-semibold text-white transition-colors hover:bg-[#b65c3e]">
+                  Continuar con la compra <ArrowRight size={17} />
+                </button>
+                {!user && <p className="mt-3 text-center text-[10px] uppercase tracking-[0.14em] text-[#858980]">Necesitas iniciar sesión para comprar</p>}
+                <p className="mt-2 text-center text-[10px] uppercase tracking-[0.14em] text-[#858980]">Impuestos y envío calculados al finalizar</p>
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
+
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onAuthSuccess={(sessionUser) => setUser(sessionUser)}
+        initialMode={authMode}
+      />
+
+      {user && (
+        <CheckoutModal
+          open={checkoutOpen}
+          onClose={() => setCheckoutOpen(false)}
+          cart={cart}
+          cartTotal={cartTotal}
+          formatPrice={formatPrice}
+          userId={user.id}
+          onComplete={() => { setCart([]); setCheckoutOpen(false); }}
+        />
+      )}
     </div>
   );
 }
